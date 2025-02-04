@@ -13,41 +13,95 @@ namespace Game.Movement
 
             Vector2Int startPosition = piece.GetPosition();
             ValidateMovesRecursive(board, piece, piece.MovementTree.Root, startPosition, validMoves);
+
+            // Apply extra moves
+            List<MovementNode> leafNodes = new List<MovementNode>();
+            GetLeafNodes(piece.MovementTree.Root, leafNodes);
+
+            foreach (MovementNode leaf in leafNodes)
+            {
+                foreach (ExtraMovementEntry extra in piece.MovementTree.ExtraMoveComponents)
+                {
+                    if (leaf.MoveNumber == extra.TargetMove)
+                    {
+                        List<MovementNode> extraNodes = extra.Component.GenerateMoves(leaf.LocalPosition);
+                        foreach (MovementNode extraNode in extraNodes)
+                        {
+                            Vector2Int globalPosition = startPosition + extraNode.LocalPosition;
+                            if (IsValidMove(board, piece, globalPosition))
+                            {
+                                validMoves.Add(globalPosition);
+                            }
+                        }
+                    }
+                }
+            }
+
             return validMoves;
         }
 
         private static void ValidateMovesRecursive(Board board, Piece piece, MovementNode node, Vector2Int startPosition, List<Vector2Int> validMoves)
         {
-            // Skip the root node (current position)
             if (node != piece.MovementTree.Root)
             {
                 Vector2Int globalPosition = startPosition + node.LocalPosition;
 
-                // Check board bounds
-                if (!board.IsWithinBounds(globalPosition))
-                    return; // Stop exploring this branch
-
-                Cell targetCell = board.GetCellAt(globalPosition);
-                
-                // If cell is occupied
-                if (targetCell.piece != null)
+                if (IsValidMove(board, piece, globalPosition))
                 {
-                    // If it's an enemy piece, add as valid move (capture) but don't continue path
-                    if (targetCell.piece.pieceColor != piece.pieceColor)
+                    validMoves.Add(globalPosition);
+
+                    // For sliding pieces, continue exploring the path only if the cell is empty
+                    if ((piece.pieceType == PieceType.Rook || piece.pieceType == PieceType.Bishop || piece.pieceType == PieceType.Queen) 
+                        && board.GetCellAt(globalPosition).piece == null)
                     {
-                        validMoves.Add(node.LocalPosition);
+                        foreach (MovementNode child in node.Children)
+                        {
+                            ValidateMovesRecursive(board, piece, child, startPosition, validMoves);
+                        }
                     }
-                    return; // Stop exploring this branch
                 }
-                
-                // Empty cell - add to valid moves
-                validMoves.Add(node.LocalPosition);
+                else
+                {
+                    // Stop exploring this path for sliding pieces
+                    return;
+                }
             }
 
-            // Continue DFS only if path isn't blocked
-            foreach (MovementNode child in node.Children)
+            // For non-sliding pieces or the root node, explore all children
+            if (piece.pieceType != PieceType.Rook && piece.pieceType != PieceType.Bishop && piece.pieceType != PieceType.Queen)
             {
-                ValidateMovesRecursive(board, piece, child, startPosition, validMoves);
+                foreach (MovementNode child in node.Children)
+                {
+                    ValidateMovesRecursive(board, piece, child, startPosition, validMoves);
+                }
+            }
+        }
+
+        private static bool IsValidMove(Board board, Piece piece, Vector2Int globalPosition)
+        {
+            if (!board.IsWithinBounds(globalPosition))
+                return false;
+
+            Cell targetCell = board.GetCellAt(globalPosition);
+            
+            if (targetCell.piece == null)
+                return true;
+
+            return targetCell.piece.pieceColor != piece.pieceColor;
+        }
+
+        private static void GetLeafNodes(MovementNode node, List<MovementNode> leaves)
+        {
+            if (node.Children.Count == 0)
+            {
+                leaves.Add(node);
+            }
+            else
+            {
+                foreach (MovementNode child in node.Children)
+                {
+                    GetLeafNodes(child, leaves);
+                }
             }
         }
     }

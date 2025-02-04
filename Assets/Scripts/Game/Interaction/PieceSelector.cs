@@ -71,16 +71,8 @@ public class PieceSelector : MonoBehaviour
         Vector2Int piecePosition = piece.GetPosition();
         Debug.Log($"Selected piece: {selectedPiece.pieceType} ({selectedPiece.pieceColor}) at {piecePosition}");
 
-        List<Vector2Int> localValidMoves = MovementValidator.GetValidMoves(board, piece);
-        List<Vector2Int> globalValidMoves = new List<Vector2Int>();
-
-        // Convert local moves to global board positions
-        foreach (Vector2Int localMove in localValidMoves)
-        {
-            globalValidMoves.Add(piecePosition + localMove);
-        }
-
-        renderEngine.HighlightCells(globalValidMoves);
+        List<Vector2Int> validMoves = MovementValidator.GetValidMoves(board, piece);
+        renderEngine.HighlightCells(validMoves);
     }
 
     private void ClearSelection()
