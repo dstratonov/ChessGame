@@ -2,341 +2,182 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Game;
-using Game.Movement;
+using Game.MovementTree;
 using Color = Game.Color;
 
 public class Board : MonoBehaviour
 {
     public RenderEngine renderEngine;
     
-    // Board dimensions (should be at least 8 for standard chess setup)
-    public int width = 8;
-    public int height = 8;
+    public int Width { get; private set; } = 8;
+    public int Height { get; private set; } = 8;
     
-    // Board cells stored in a dictionary keyed by (x, y)
     private Dictionary<(int, int), Cell> _cells = new Dictionary<(int, int), Cell>();
 
     void Start()
     {
-        // Create the board and then initialize chess pieces in the center 8x8 region.
-        InitializeBoard(width, height);
-        InitPieces();
+        InitializeBoard(Width, Height);
+        InitializePieces();
         RefreshBoard();
     }
 
-    /// <summary>
-    /// Creates a board with the specified dimensions.
-    /// </summary>
-    public void InitializeBoard(int newWidth, int newHeight)
+    public void InitializeBoard(int width, int height)
     {
-        width = newWidth;
-        height = newHeight;
+        Width = width;
+        Height = height;
         _cells.Clear();
         
-        for (int x = 0; x < width; x++)
+        for (int x = 0; x < Width; x++)
         {
-            for (int y = 0; y < height; y++)
+            for (int y = 0; y < Height; y++)
             {
                 _cells[(x, y)] = new Cell(x, y);
             }
         }
     }
 
-    /// <summary>
-    /// Re-renders the board using the current cell dictionary.
-    /// </summary>
     public void RefreshBoard()
     {
-        // Depending on your RenderEngine implementation, you might need to clear previous renderings.
         renderEngine.RenderCells(_cells);
     }
     
     public Cell GetCellAt(Vector2Int pos)
     {
-        if (_cells.TryGetValue((pos.x, pos.y), out Cell cell))
-            return cell;
-        return null;
+        return _cells.TryGetValue((pos.x, pos.y), out Cell cell) ? cell : null;
     }
     
     public bool IsWithinBounds(Vector2Int pos)
     {
-        return pos.x >= 0 && pos.x < width && pos.y >= 0 && pos.y < height;
-    }
-    
-
-    /// <summary>
-    /// Places standard chess pieces into the center 8x8 region of the board.
-    /// For boards larger than 8x8, the extra rows/columns become margins.
-    /// </summary>
-    private void InitPieces()
-{
-    // Ensure the board is large enough for a standard chess setup.
-    if (width < 8 || height < 8)
-    {
-        Debug.LogWarning("Board size is too small for a standard chess setup.");
-        return;
+        return pos.x >= 0 && pos.x < Width && pos.y >= 0 && pos.y < Height;
     }
 
-    // Compute margins so the standard 8x8 grid is centered.
-    int marginX = (width - 8) / 2;
-    int marginY = (height - 8) / 2;
-
-    // For sliding pieces (rook, bishop, queen), use a maxSteps value that covers the board.
-    int maxSteps = Math.Max(width, height);
-
-    #region Pawns
-
-    // White Pawns (placed on core row 1)
-    for (int x = 0; x < 8; x++)
+    private void InitializePieces()
     {
-        int posX = marginX + x;
-        int posY = marginY + 1;
-        if (_cells.ContainsKey((posX, posY)))
+        if (Width < 8 || Height < 8)
         {
-            Piece pawn = new Piece(PieceType.Pawn, Color.White);
-            // White pawns move upward.
-            pawn.MovementBehavior = new DirectionalMovement(new Vector2Int(0, 1), 1);
-            _cells[(posX, posY)].addPiece(pawn);
+            Debug.LogWarning("Board size is too small for a standard chess setup.");
+            return;
+        }
+
+        int marginX = (Width - 8) / 2;
+        int marginY = (Height - 8) / 2;
+        int maxSteps = Math.Max(Width, Height);
+
+        InitializePawns(marginX, marginY);
+        InitializeMajorPieces(marginX, marginY, maxSteps);
+    }
+
+    private void InitializePawns(int marginX, int marginY)
+    {
+        for (int x = 0; x < 8; x++)
+        {
+            CreatePawn(Color.White, new Vector2Int(marginX + x, marginY + 1), new Vector2Int(0, 1));
+            CreatePawn(Color.Black, new Vector2Int(marginX + x, marginY + 6), new Vector2Int(0, -1));
         }
     }
 
-    // Black Pawns (placed on core row 6)
-    for (int x = 0; x < 8; x++)
+    private void CreatePawn(Color color, Vector2Int position, Vector2Int direction)
     {
-        int posX = marginX + x;
-        int posY = marginY + 6;
-        if (_cells.ContainsKey((posX, posY)))
-        {
-            Piece pawn = new Piece(PieceType.Pawn, Color.Black);
-            // Black pawns move downward.
-            pawn.MovementBehavior = new DirectionalMovement(new Vector2Int(0, -1), 1);
-            _cells[(posX, posY)].addPiece(pawn);
-        }
+        Piece pawn = new Piece(PieceType.Pawn, color, position.x, position.y);
+        pawn.AddMovementComponent(new DirectionalMovementComponent(direction, 2), 0);
+        _cells[(position.x, position.y)].addPiece(pawn);
     }
 
-    #endregion
-
-    #region White Major Pieces (Core Row 0)
-
-    // White Rook (left)
-    if (_cells.ContainsKey((marginX + 0, marginY + 0)))
+    private void InitializeMajorPieces(int marginX, int marginY, int maxSteps)
     {
-        Piece rook = new Piece(PieceType.Rook, Color.White);
-        CompositeMovement rookMovement = new CompositeMovement();
-        rookMovement.Add(new DirectionalMovement(new Vector2Int(0, 1), maxSteps));
-        rookMovement.Add(new DirectionalMovement(new Vector2Int(0, -1), maxSteps));
-        rookMovement.Add(new DirectionalMovement(new Vector2Int(1, 0), maxSteps));
-        rookMovement.Add(new DirectionalMovement(new Vector2Int(-1, 0), maxSteps));
-        rook.MovementBehavior = rookMovement;
-        _cells[(marginX + 0, marginY + 0)].addPiece(rook);
+        InitializeRooks(marginX, marginY, maxSteps);
+        InitializeKnights(marginX, marginY);
+        InitializeBishops(marginX, marginY, maxSteps);
+        InitializeQueens(marginX, marginY, maxSteps);
+        InitializeKings(marginX, marginY);
     }
 
-    // White Knight (left)
-    if (_cells.ContainsKey((marginX + 1, marginY + 0)))
+    private void InitializeRooks(int marginX, int marginY, int maxSteps)
     {
-        Piece knight = new Piece(PieceType.Knight, Color.White);
-        knight.MovementBehavior = new KnightMovement();
-        _cells[(marginX + 1, marginY + 0)].addPiece(knight);
+        CreateRook(Color.White, new Vector2Int(marginX, marginY), maxSteps);
+        CreateRook(Color.White, new Vector2Int(marginX + 7, marginY), maxSteps);
+        CreateRook(Color.Black, new Vector2Int(marginX, marginY + 7), maxSteps);
+        CreateRook(Color.Black, new Vector2Int(marginX + 7, marginY + 7), maxSteps);
     }
 
-    // White Bishop (left)
-    if (_cells.ContainsKey((marginX + 2, marginY + 0)))
+    private void CreateRook(Color color, Vector2Int position, int maxSteps)
     {
-        Piece bishop = new Piece(PieceType.Bishop, Color.White);
-        CompositeMovement bishopMovement = new CompositeMovement();
-        bishopMovement.Add(new DirectionalMovement(new Vector2Int(1, 1), maxSteps));
-        bishopMovement.Add(new DirectionalMovement(new Vector2Int(1, -1), maxSteps));
-        bishopMovement.Add(new DirectionalMovement(new Vector2Int(-1, 1), maxSteps));
-        bishopMovement.Add(new DirectionalMovement(new Vector2Int(-1, -1), maxSteps));
-        bishop.MovementBehavior = bishopMovement;
-        _cells[(marginX + 2, marginY + 0)].addPiece(bishop);
+        Piece rook = new Piece(PieceType.Rook, color, position.x, position.y);
+        AddOrthogonalMovements(rook, maxSteps);
+        _cells[(position.x, position.y)].addPiece(rook);
     }
 
-    // White Queen
-    if (_cells.ContainsKey((marginX + 3, marginY + 0)))
+    private void InitializeKnights(int marginX, int marginY)
     {
-        Piece queen = new Piece(PieceType.Queen, Color.White);
-        CompositeMovement queenMovement = new CompositeMovement();
-        // Rook-like moves:
-        queenMovement.Add(new DirectionalMovement(new Vector2Int(0, 1), maxSteps));
-        queenMovement.Add(new DirectionalMovement(new Vector2Int(0, -1), maxSteps));
-        queenMovement.Add(new DirectionalMovement(new Vector2Int(1, 0), maxSteps));
-        queenMovement.Add(new DirectionalMovement(new Vector2Int(-1, 0), maxSteps));
-        // Bishop-like moves:
-        queenMovement.Add(new DirectionalMovement(new Vector2Int(1, 1), maxSteps));
-        queenMovement.Add(new DirectionalMovement(new Vector2Int(1, -1), maxSteps));
-        queenMovement.Add(new DirectionalMovement(new Vector2Int(-1, 1), maxSteps));
-        queenMovement.Add(new DirectionalMovement(new Vector2Int(-1, -1), maxSteps));
-        queen.MovementBehavior = queenMovement;
-        _cells[(marginX + 3, marginY + 0)].addPiece(queen);
+        CreateKnight(Color.White, new Vector2Int(marginX + 1, marginY));
+        CreateKnight(Color.White, new Vector2Int(marginX + 6, marginY));
+        CreateKnight(Color.Black, new Vector2Int(marginX + 1, marginY + 7));
+        CreateKnight(Color.Black, new Vector2Int(marginX + 6, marginY + 7));
     }
 
-    // White King
-    if (_cells.ContainsKey((marginX + 4, marginY + 0)))
+    private void CreateKnight(Color color, Vector2Int position)
     {
-        Piece king = new Piece(PieceType.King, Color.White);
-        CompositeMovement kingMovement = new CompositeMovement();
-        // King moves only one step in any direction.
-        kingMovement.Add(new DirectionalMovement(new Vector2Int(0, 1), 1));
-        kingMovement.Add(new DirectionalMovement(new Vector2Int(0, -1), 1));
-        kingMovement.Add(new DirectionalMovement(new Vector2Int(1, 0), 1));
-        kingMovement.Add(new DirectionalMovement(new Vector2Int(-1, 0), 1));
-        kingMovement.Add(new DirectionalMovement(new Vector2Int(1, 1), 1));
-        kingMovement.Add(new DirectionalMovement(new Vector2Int(1, -1), 1));
-        kingMovement.Add(new DirectionalMovement(new Vector2Int(-1, 1), 1));
-        kingMovement.Add(new DirectionalMovement(new Vector2Int(-1, -1), 1));
-        king.MovementBehavior = kingMovement;
-        _cells[(marginX + 4, marginY + 0)].addPiece(king);
+        Piece knight = new Piece(PieceType.Knight, color, position.x, position.y);
+        knight.AddMovementComponent(new KnightMovementComponent(), 0);
+        _cells[(position.x, position.y)].addPiece(knight);
     }
 
-    // White Bishop (right)
-    if (_cells.ContainsKey((marginX + 5, marginY + 0)))
+    private void InitializeBishops(int marginX, int marginY, int maxSteps)
     {
-        Piece bishop = new Piece(PieceType.Bishop, Color.White);
-        CompositeMovement bishopMovement = new CompositeMovement();
-        bishopMovement.Add(new DirectionalMovement(new Vector2Int(1, 1), maxSteps));
-        bishopMovement.Add(new DirectionalMovement(new Vector2Int(1, -1), maxSteps));
-        bishopMovement.Add(new DirectionalMovement(new Vector2Int(-1, 1), maxSteps));
-        bishopMovement.Add(new DirectionalMovement(new Vector2Int(-1, -1), maxSteps));
-        bishop.MovementBehavior = bishopMovement;
-        _cells[(marginX + 5, marginY + 0)].addPiece(bishop);
+        CreateBishop(Color.White, new Vector2Int(marginX + 2, marginY), maxSteps);
+        CreateBishop(Color.White, new Vector2Int(marginX + 5, marginY), maxSteps);
+        CreateBishop(Color.Black, new Vector2Int(marginX + 2, marginY + 7), maxSteps);
+        CreateBishop(Color.Black, new Vector2Int(marginX + 5, marginY + 7), maxSteps);
     }
 
-    // White Knight (right)
-    if (_cells.ContainsKey((marginX + 6, marginY + 0)))
+    private void CreateBishop(Color color, Vector2Int position, int maxSteps)
     {
-        Piece knight = new Piece(PieceType.Knight, Color.White);
-        knight.MovementBehavior = new KnightMovement();
-        _cells[(marginX + 6, marginY + 0)].addPiece(knight);
+        Piece bishop = new Piece(PieceType.Bishop, color, position.x, position.y);
+        AddDiagonalMovements(bishop, maxSteps);
+        _cells[(position.x, position.y)].addPiece(bishop);
     }
 
-    // White Rook (right)
-    if (_cells.ContainsKey((marginX + 7, marginY + 0)))
+    private void InitializeQueens(int marginX, int marginY, int maxSteps)
     {
-        Piece rook = new Piece(PieceType.Rook, Color.White);
-        CompositeMovement rookMovement = new CompositeMovement();
-        rookMovement.Add(new DirectionalMovement(new Vector2Int(0, 1), maxSteps));
-        rookMovement.Add(new DirectionalMovement(new Vector2Int(0, -1), maxSteps));
-        rookMovement.Add(new DirectionalMovement(new Vector2Int(1, 0), maxSteps));
-        rookMovement.Add(new DirectionalMovement(new Vector2Int(-1, 0), maxSteps));
-        rook.MovementBehavior = rookMovement;
-        _cells[(marginX + 7, marginY + 0)].addPiece(rook);
+        CreateQueen(Color.White, new Vector2Int(marginX + 3, marginY), maxSteps);
+        CreateQueen(Color.Black, new Vector2Int(marginX + 3, marginY + 7), maxSteps);
     }
 
-    #endregion
-
-    #region Black Major Pieces (Core Row 7)
-
-    // Black Rook (left)
-    if (_cells.ContainsKey((marginX + 0, marginY + 7)))
+    private void CreateQueen(Color color, Vector2Int position, int maxSteps)
     {
-        Piece rook = new Piece(PieceType.Rook, Color.Black);
-        CompositeMovement rookMovement = new CompositeMovement();
-        rookMovement.Add(new DirectionalMovement(new Vector2Int(0, 1), maxSteps));
-        rookMovement.Add(new DirectionalMovement(new Vector2Int(0, -1), maxSteps));
-        rookMovement.Add(new DirectionalMovement(new Vector2Int(1, 0), maxSteps));
-        rookMovement.Add(new DirectionalMovement(new Vector2Int(-1, 0), maxSteps));
-        rook.MovementBehavior = rookMovement;
-        _cells[(marginX + 0, marginY + 7)].addPiece(rook);
+        Piece queen = new Piece(PieceType.Queen, color, position.x, position.y);
+        AddOrthogonalMovements(queen, maxSteps);
+        AddDiagonalMovements(queen, maxSteps);
+        _cells[(position.x, position.y)].addPiece(queen);
     }
 
-    // Black Knight (left)
-    if (_cells.ContainsKey((marginX + 1, marginY + 7)))
+    private void InitializeKings(int marginX, int marginY)
     {
-        Piece knight = new Piece(PieceType.Knight, Color.Black);
-        knight.MovementBehavior = new KnightMovement();
-        _cells[(marginX + 1, marginY + 7)].addPiece(knight);
+        CreateKing(Color.White, new Vector2Int(marginX + 4, marginY));
+        CreateKing(Color.Black, new Vector2Int(marginX + 4, marginY + 7));
     }
 
-    // Black Bishop (left)
-    if (_cells.ContainsKey((marginX + 2, marginY + 7)))
+    private void CreateKing(Color color, Vector2Int position)
     {
-        Piece bishop = new Piece(PieceType.Bishop, Color.Black);
-        CompositeMovement bishopMovement = new CompositeMovement();
-        bishopMovement.Add(new DirectionalMovement(new Vector2Int(1, 1), maxSteps));
-        bishopMovement.Add(new DirectionalMovement(new Vector2Int(1, -1), maxSteps));
-        bishopMovement.Add(new DirectionalMovement(new Vector2Int(-1, 1), maxSteps));
-        bishopMovement.Add(new DirectionalMovement(new Vector2Int(-1, -1), maxSteps));
-        bishop.MovementBehavior = bishopMovement;
-        _cells[(marginX + 2, marginY + 7)].addPiece(bishop);
+        Piece king = new Piece(PieceType.King, color, position.x, position.y);
+        AddOrthogonalMovements(king, 1);
+        AddDiagonalMovements(king, 1);
+        _cells[(position.x, position.y)].addPiece(king);
     }
 
-    // Black Queen
-    if (_cells.ContainsKey((marginX + 3, marginY + 7)))
+    private void AddOrthogonalMovements(Piece piece, int maxSteps)
     {
-        Piece queen = new Piece(PieceType.Queen, Color.Black);
-        CompositeMovement queenMovement = new CompositeMovement();
-        // Rook-like moves:
-        queenMovement.Add(new DirectionalMovement(new Vector2Int(0, 1), maxSteps));
-        queenMovement.Add(new DirectionalMovement(new Vector2Int(0, -1), maxSteps));
-        queenMovement.Add(new DirectionalMovement(new Vector2Int(1, 0), maxSteps));
-        queenMovement.Add(new DirectionalMovement(new Vector2Int(-1, 0), maxSteps));
-        // Bishop-like moves:
-        queenMovement.Add(new DirectionalMovement(new Vector2Int(1, 1), maxSteps));
-        queenMovement.Add(new DirectionalMovement(new Vector2Int(1, -1), maxSteps));
-        queenMovement.Add(new DirectionalMovement(new Vector2Int(-1, 1), maxSteps));
-        queenMovement.Add(new DirectionalMovement(new Vector2Int(-1, -1), maxSteps));
-        queen.MovementBehavior = queenMovement;
-        _cells[(marginX + 3, marginY + 7)].addPiece(queen);
+        piece.AddMovementComponent(new DirectionalMovementComponent(Vector2Int.up, maxSteps), 0);
+        piece.AddMovementComponent(new DirectionalMovementComponent(Vector2Int.down, maxSteps), 0);
+        piece.AddMovementComponent(new DirectionalMovementComponent(Vector2Int.left, maxSteps), 0);
+        piece.AddMovementComponent(new DirectionalMovementComponent(Vector2Int.right, maxSteps), 0);
     }
 
-    // Black King
-    if (_cells.ContainsKey((marginX + 4, marginY + 7)))
+    private void AddDiagonalMovements(Piece piece, int maxSteps)
     {
-        Piece king = new Piece(PieceType.King, Color.Black);
-        CompositeMovement kingMovement = new CompositeMovement();
-        kingMovement.Add(new DirectionalMovement(new Vector2Int(0, 1), 1));
-        kingMovement.Add(new DirectionalMovement(new Vector2Int(0, -1), 1));
-        kingMovement.Add(new DirectionalMovement(new Vector2Int(1, 0), 1));
-        kingMovement.Add(new DirectionalMovement(new Vector2Int(-1, 0), 1));
-        kingMovement.Add(new DirectionalMovement(new Vector2Int(1, 1), 1));
-        kingMovement.Add(new DirectionalMovement(new Vector2Int(1, -1), 1));
-        kingMovement.Add(new DirectionalMovement(new Vector2Int(-1, 1), 1));
-        kingMovement.Add(new DirectionalMovement(new Vector2Int(-1, -1), 1));
-        king.MovementBehavior = kingMovement;
-        _cells[(marginX + 4, marginY + 7)].addPiece(king);
-    }
-
-    // Black Bishop (right)
-    if (_cells.ContainsKey((marginX + 5, marginY + 7)))
-    {
-        Piece bishop = new Piece(PieceType.Bishop, Color.Black);
-        CompositeMovement bishopMovement = new CompositeMovement();
-        bishopMovement.Add(new DirectionalMovement(new Vector2Int(1, 1), maxSteps));
-        bishopMovement.Add(new DirectionalMovement(new Vector2Int(1, -1), maxSteps));
-        bishopMovement.Add(new DirectionalMovement(new Vector2Int(-1, 1), maxSteps));
-        bishopMovement.Add(new DirectionalMovement(new Vector2Int(-1, -1), maxSteps));
-        bishop.MovementBehavior = bishopMovement;
-        _cells[(marginX + 5, marginY + 7)].addPiece(bishop);
-    }
-
-    // Black Knight (right)
-    if (_cells.ContainsKey((marginX + 6, marginY + 7)))
-    {
-        Piece knight = new Piece(PieceType.Knight, Color.Black);
-        knight.MovementBehavior = new KnightMovement();
-        _cells[(marginX + 6, marginY + 7)].addPiece(knight);
-    }
-
-    // Black Rook (right)
-    if (_cells.ContainsKey((marginX + 7, marginY + 7)))
-    {
-        Piece rook = new Piece(PieceType.Rook, Color.Black);
-        CompositeMovement rookMovement = new CompositeMovement();
-        rookMovement.Add(new DirectionalMovement(new Vector2Int(0, 1), maxSteps));
-        rookMovement.Add(new DirectionalMovement(new Vector2Int(0, -1), maxSteps));
-        rookMovement.Add(new DirectionalMovement(new Vector2Int(1, 0), maxSteps));
-        rookMovement.Add(new DirectionalMovement(new Vector2Int(-1, 0), maxSteps));
-        rook.MovementBehavior = rookMovement;
-        _cells[(marginX + 7, marginY + 7)].addPiece(rook);
-    }
-
-    #endregion
-}
-
-    void Update()
-    {
-        // For testing dynamic board resizing, you might trigger board updates here.
-        // Example: if (Input.GetKeyDown(KeyCode.L)) { AddColumnsLeft(1); }
+        piece.AddMovementComponent(new DirectionalMovementComponent(new Vector2Int(1, 1), maxSteps), 0);
+        piece.AddMovementComponent(new DirectionalMovementComponent(new Vector2Int(1, -1), maxSteps), 0);
+        piece.AddMovementComponent(new DirectionalMovementComponent(new Vector2Int(-1, 1), maxSteps), 0);
+        piece.AddMovementComponent(new DirectionalMovementComponent(new Vector2Int(-1, -1), maxSteps), 0);
     }
 }

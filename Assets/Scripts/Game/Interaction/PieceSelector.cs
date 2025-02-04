@@ -1,13 +1,15 @@
 ﻿using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 using Game;
-using Game.Movement; // Contains the movement interfaces and implementations
+using Game.MovementTree; // For MovementTree and related components
 
 public class PieceSelector : MonoBehaviour
 {
     [Tooltip("Assign the Board object from the scene.")]
     public Board board;
+
+    [Tooltip("Assign the RenderEngine object from the scene.")]
+    public RenderEngine renderEngine;
 
     [Tooltip("Assign the main camera (or leave empty to use Camera.main).")]
     public Camera mainCamera;
@@ -17,9 +19,6 @@ public class PieceSelector : MonoBehaviour
 
     // The board coordinate where the selected piece is located
     private Vector2Int selectedCellPosition;
-
-    // Keep track of cells that have been highlighted so we can clear them later.
-    private List<CellController> highlightedCells = new List<CellController>();
 
     void Update()
     {
@@ -39,7 +38,6 @@ public class PieceSelector : MonoBehaviour
                 CellController cellController = hit.collider.GetComponent<CellController>();
                 if (cellController != null)
                 {
-                    // Use the stored board coordinates from the CellController.
                     Vector2Int pos = new Vector2Int(cellController.x, cellController.y);
                     Debug.Log($"Clicked cell at: {pos.x}, {pos.y}");
 
@@ -49,65 +47,42 @@ public class PieceSelector : MonoBehaviour
                     {
                         if (cell.piece != null)
                         {
-                            // Select the piece and highlight its valid moves.
+                            // A piece is present; select it and highlight its valid moves.
                             selectedPiece = cell.piece;
                             selectedCellPosition = pos;
                             Debug.Log($"Selected piece: {selectedPiece.pieceType} ({selectedPiece.pieceColor}) at {pos}");
-                            HighlightValidMoves(selectedPiece, pos);
+
+                            // Use the piece's movement tree to get valid local moves.
+                            if (selectedPiece.MovementTree != null)
+                            {
+                                // Get reachable positions relative to the piece's start (local offsets).
+                                List<Vector2Int> localMoves = selectedPiece.MovementTree.GetAllReachablePositions();
+
+                                // Convert local moves to global board positions by adding the piece's board position.
+                                List<Vector2Int> validMoves = new List<Vector2Int>();
+                                foreach (Vector2Int offset in localMoves)
+                                {
+                                    validMoves.Add(selectedCellPosition + offset);
+                                }
+
+                                // Let the renderer highlight these cells.
+                                renderEngine.HighlightCells(validMoves);
+                            }
+                            else
+                            {
+                                // If no movement tree is assigned, clear any highlights.
+                                renderEngine.ClearHighlights();
+                            }
                         }
                         else
                         {
-                            // Optionally, if you click an empty cell, clear any highlights/selection.
-                            ClearHighlights();
+                            // Clicked on an empty cell: clear the selection and remove any highlights.
                             selectedPiece = null;
+                            renderEngine.ClearHighlights();
                         }
                     }
                 }
             }
         }
-    }
-
-    /// <summary>
-    /// Highlights all cells that are valid moves for the given piece.
-    /// </summary>
-    /// <param name="piece">The piece whose valid moves will be highlighted.</param>
-    /// <param name="currentPos">The board coordinate of the piece.</param>
-    private void HighlightValidMoves(Piece piece, Vector2Int currentPos)
-    {
-        // Clear any previously highlighted cells.
-        ClearHighlights();
-
-        // Get the valid moves from the piece's movement behavior.
-        List<Vector2Int> validMoves = piece.MovementBehavior.GetAvailableMoves(currentPos, board, piece);
-
-        // For simplicity, find all cell controllers in the scene.
-        // (For larger boards you might want to cache these references.)
-        CellController[] allCellControllers = GameObject.FindObjectsOfType<CellController>();
-
-        // Highlight the cells whose board coordinates are in the valid moves list.
-        foreach (CellController cc in allCellControllers)
-        {
-            Vector2Int cellPos = new Vector2Int(cc.x, cc.y);
-            if (validMoves.Contains(cellPos))
-            {
-                cc.SetHighlight(true);
-                highlightedCells.Add(cc);
-            }
-        }
-    }
-
-    /// <summary>
-    /// Clears any highlighted cells.
-    /// </summary>
-    private void ClearHighlights()
-    {
-        foreach (CellController cc in highlightedCells)
-        {
-            if (cc != null)
-            {
-                cc.SetHighlight(false);
-            }
-        }
-        highlightedCells.Clear();
     }
 }

@@ -47,6 +47,41 @@ public class RenderEngine : MonoBehaviour
             { PieceType.King, kingPrefab }
         };
     }
+    
+    /// <summary>
+    /// Highlights all cells whose board coordinates are in the given list.
+    /// </summary>
+    /// <param name="positions">List of board positions (Vector2Int) to highlight.</param>
+    public void HighlightCells(List<Vector2Int> positions)
+    {
+        // Find all cells that have a CellController attached.
+        CellController[] controllers = GameObject.FindObjectsOfType<CellController>();
+        foreach (CellController cc in controllers)
+        {
+            Vector2Int pos = new Vector2Int(cc.x, cc.y);
+            // If the cell's position is one of the valid moves, highlight it; otherwise, turn off the highlight.
+            if (positions.Contains(pos))
+            {
+                cc.SetHighlight(true);
+            }
+            else
+            {
+                cc.SetHighlight(false);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Clears all cell highlights.
+    /// </summary>
+    public void ClearHighlights()
+    {
+        CellController[] controllers = GameObject.FindObjectsOfType<CellController>();
+        foreach (CellController cc in controllers)
+        {
+            cc.SetHighlight(false);
+        }
+    }
 
     /// <summary>
     /// Instantiates a cell and applies the correct material based on its board position.
